@@ -1,0 +1,22 @@
+{
+  "name": "shiftcontrol",
+  "private": true,
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "db:generate": "pnpm --filter @shiftcontrol/database generate",
+    "db:migrate": "pnpm --filter @shiftcontrol/database migrate",
+    "db:seed": "pnpm --filter @shiftcontrol/database seed",
+    "db:studio": "pnpm --filter @shiftcontrol/database studio"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20"
+  }
+}

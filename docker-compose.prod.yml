@@ -1,0 +1,112 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-shiftcontrol}
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    volumes:
+      - redisdata:/data
+    networks:
+      - internal
+
+  minio:
+    image: minio/minio:latest
+    restart: always
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY}
+    volumes:
+      - miniodata:/data
+    networks:
+      - internal
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    restart: always
+    env_file: .env.production
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-shiftcontrol}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      S3_ENDPOINT: http://minio:9000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      minio:
+        condition: service_started
+    networks:
+      - internal
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web
+    restart: always
+    env_file: .env.production
+    environment:
+      API_INTERNAL_URL: http://api:3001
+    depends_on:
+      - api
+    networks:
+      - internal
+
+  miniapp:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.miniapp
+      args:
+        VITE_API_URL: /api/v1
+    restart: always
+    volumes:
+      - miniapp_static:/usr/share/nginx/html
+    networks:
+      - internal
+
+  nginx:
+    image: nginx:alpine
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/templates/default.conf.template:ro
+      - miniapp_static:/usr/share/nginx/miniapp:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    environment:
+      DOMAIN: ${DOMAIN}
+    depends_on:
+      - api
+      - web
+      - miniapp
+    networks:
+      - internal
+
+volumes:
+  pgdata:
+  redisdata:
+  miniodata:
+  miniapp_static:
+
+networks:
+  internal:
+    driver: bridge

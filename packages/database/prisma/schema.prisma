@@ -1,0 +1,501 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  SUPERADMIN
+  MANAGER
+  FOREMAN
+  WORKER
+}
+
+enum UserStatus {
+  ACTIVE
+  BLOCKED
+  PENDING_VERIFICATION
+}
+
+enum ShiftStatus {
+  DRAFT
+  PUBLISHED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum ApplicationStatus {
+  CONFIRMED
+  CANCELLED
+  NO_SHOW
+  COMPLETED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  LEFT_EARLY
+  FULL_SHIFT
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  PAID
+  CANCELLED
+}
+
+enum NotificationType {
+  SHIFT_REMINDER
+  SHIFT_CHANGED
+  SHIFT_CANCELLED
+  APPLICATION_CONFIRMED
+  PAYMENT_INFO
+  SYSTEM
+}
+
+enum WorkerListType {
+  FAVORITE
+  BLACKLIST
+  WHITELIST
+}
+
+enum DocumentType {
+  ID_CARD
+  PASSPORT
+  OTHER
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  BLOCK
+  UNBLOCK
+  PUBLISH
+  CANCEL
+  APPLY
+  EXPORT
+  IMPORT
+}
+
+enum ScheduledNotificationStatus {
+  PENDING
+  SENT
+  CANCELLED
+}
+
+model Company {
+  id        String   @id @default(cuid())
+  name      String
+  inn       String?
+  phone     String?
+  email     String?
+  address   String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users              User[]
+  objects            ConstructionObject[]
+  shifts             Shift[]
+  settings           Setting[]
+  workerListEntries  WorkerListEntry[]
+  managerProfiles    ManagerProfile[]
+  foremanProfiles    ForemanProfile[]
+
+  @@index([isActive])
+}
+
+model User {
+  id               String     @id @default(cuid())
+  email            String?    @unique
+  passwordHash     String?
+  telegramId       BigInt?    @unique
+  telegramUsername String?
+  role             UserRole
+  status           UserStatus @default(ACTIVE)
+  companyId        String?
+  company          Company?   @relation(fields: [companyId], references: [id])
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  refreshTokens       RefreshToken[]
+  workerProfile       WorkerProfile?
+  managerProfile      ManagerProfile?
+  foremanProfile      ForemanProfile?
+  foremanShifts       Shift[]              @relation("ShiftForeman")
+  applications        ShiftApplication[]
+  notifications       Notification[]
+  auditLogs           AuditLog[]
+  workerDocuments     WorkerDocument[]
+  ratingHistory       RatingHistory[]
+  workerListAdded     WorkerListEntry[]    @relation("ListAddedBy")
+  workerListEntries   WorkerListEntry[]    @relation("ListedWorker")
+  shiftChangeLogs     ShiftChangeLog[]
+  attendanceMarked    AttendanceRecord[]   @relation("MarkedByForeman")
+  payments            Payment[]
+
+  @@index([role, status])
+  @@index([companyId])
+  @@index([telegramId])
+}
+
+model RefreshToken {
+  id         String   @id @default(cuid())
+  token      String   @unique
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceInfo String?
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model WorkerProfile {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName         String
+  phone            String
+  birthDate        DateTime @db.Date
+  city             String
+  specialty        String
+  experience       Int      @default(0)
+  rating           Float    @default(100)
+  totalShifts      Int      @default(0)
+  totalEarnings    Decimal  @default(0) @db.Decimal(12, 2)
+  bankDetails      Json?
+  photoUrl         String?
+  documentPhotoUrl String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([city, specialty])
+  @@index([rating])
+  @@index([fullName])
+  @@index([phone])
+}
+
+model ManagerProfile {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+  fullName  String
+  phone     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+}
+
+model ForemanProfile {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+  fullName  String
+  phone     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+}
+
+model ConstructionObject {
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id])
+  name        String
+  address     String
+  latitude    Float?
+  longitude   Float?
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  photos ObjectPhoto[]
+  shifts Shift[]
+
+  @@index([companyId, isActive])
+}
+
+model ObjectPhoto {
+  id       String             @id @default(cuid())
+  objectId String
+  object   ConstructionObject @relation(fields: [objectId], references: [id], onDelete: Cascade)
+  url      String
+  key      String
+  sortOrder Int               @default(0)
+  createdAt DateTime           @default(now())
+
+  @@index([objectId])
+}
+
+model Shift {
+  id                   String      @id @default(cuid())
+  companyId            String
+  company              Company     @relation(fields: [companyId], references: [id])
+  objectId             String
+  object               ConstructionObject @relation(fields: [objectId], references: [id])
+  title                String
+  address              String
+  latitude             Float?
+  longitude            Float?
+  date                 DateTime    @db.Date
+  startTime            String
+  endTime              String
+  duration             Int
+  cost                 Decimal     @db.Decimal(10, 2)
+  maxWorkers           Int
+  bookedWorkers        Int         @default(0)
+  description          String?
+  requirements         String?
+  minRating            Float       @default(0)
+  registrationDeadline DateTime?
+  foremanId            String?
+  foreman              User?       @relation("ShiftForeman", fields: [foremanId], references: [id])
+  status               ShiftStatus @default(DRAFT)
+  qrCheckInToken       String?     @unique
+  gpsRadiusMeters      Int         @default(200)
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+
+  photos       ShiftPhoto[]
+  applications ShiftApplication[]
+  changeLogs   ShiftChangeLog[]
+  payments     Payment[]
+
+  @@index([companyId, date, status])
+  @@index([foremanId])
+  @@index([objectId])
+  @@index([status, date])
+}
+
+model ShiftPhoto {
+  id        String   @id @default(cuid())
+  shiftId   String
+  shift     Shift    @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  url       String
+  key       String
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([shiftId])
+}
+
+model ShiftApplication {
+  id          String            @id @default(cuid())
+  shiftId     String
+  shift       Shift             @relation(fields: [shiftId], references: [id])
+  workerId    String
+  worker      User              @relation(fields: [workerId], references: [id])
+  status      ApplicationStatus @default(CONFIRMED)
+  appliedAt   DateTime          @default(now())
+  cancelledAt DateTime?
+  confirmedAt DateTime?
+
+  attendance AttendanceRecord?
+  rating     WorkerRating?
+  payment    Payment?
+
+  @@unique([shiftId, workerId])
+  @@index([workerId, status])
+  @@index([shiftId, status])
+}
+
+model AttendanceRecord {
+  id                String           @id @default(cuid())
+  applicationId     String           @unique
+  application       ShiftApplication @relation(fields: [applicationId], references: [id])
+  shiftId           String
+  status            AttendanceStatus
+  stars             Int?
+  comment           String?
+  checkedInAt       DateTime?
+  checkedInViaQr    Boolean          @default(false)
+  checkedInGps      Json?
+  gpsVerified       Boolean          @default(false)
+  markedByForemanId String?
+  markedByForeman   User?            @relation("MarkedByForeman", fields: [markedByForemanId], references: [id])
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@index([shiftId])
+}
+
+model WorkerRating {
+  id            String           @id @default(cuid())
+  applicationId String           @unique
+  application   ShiftApplication @relation(fields: [applicationId], references: [id])
+  stars         Int
+  comment       String?
+  isBestWorker  Boolean          @default(false)
+  createdAt     DateTime         @default(now())
+
+  @@index([applicationId])
+}
+
+model RatingHistory {
+  id             String   @id @default(cuid())
+  workerId       String
+  worker         User     @relation(fields: [workerId], references: [id])
+  change         Float
+  reason         String
+  previousRating Float
+  newRating      Float
+  shiftId        String?
+  createdById    String?
+  createdAt      DateTime @default(now())
+
+  @@index([workerId, createdAt])
+}
+
+model Payment {
+  id            String           @id @default(cuid())
+  applicationId String           @unique
+  application   ShiftApplication @relation(fields: [applicationId], references: [id])
+  workerId      String
+  worker        User             @relation(fields: [workerId], references: [id])
+  shiftId       String
+  shift         Shift            @relation(fields: [shiftId], references: [id])
+  amount        Decimal          @db.Decimal(10, 2)
+  status        PaymentStatus    @default(PENDING)
+  paidAt        DateTime?
+  comment       String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@index([workerId, status])
+  @@index([shiftId])
+}
+
+model Notification {
+  id              String           @id @default(cuid())
+  userId          String
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type            NotificationType
+  title           String
+  body            String
+  data            Json?
+  isRead          Boolean          @default(false)
+  sentViaTelegram Boolean          @default(false)
+  createdAt       DateTime         @default(now())
+
+  @@index([userId, isRead])
+  @@index([createdAt])
+}
+
+model ScheduledNotification {
+  id        String                    @id @default(cuid())
+  userId    String
+  shiftId   String
+  type      NotificationType
+  title     String
+  body      String
+  sendAt    DateTime
+  status    ScheduledNotificationStatus @default(PENDING)
+  createdAt DateTime                  @default(now())
+
+  @@index([sendAt, status])
+  @@index([shiftId])
+  @@index([userId])
+}
+
+model WorkerListEntry {
+  id        String         @id @default(cuid())
+  companyId String
+  company   Company        @relation(fields: [companyId], references: [id])
+  workerId  String
+  worker    User           @relation("ListedWorker", fields: [workerId], references: [id])
+  listType  WorkerListType
+  addedById String
+  addedBy   User           @relation("ListAddedBy", fields: [addedById], references: [id])
+  reason    String?
+  createdAt DateTime       @default(now())
+
+  @@unique([companyId, workerId, listType])
+  @@index([companyId, listType])
+}
+
+model Setting {
+  id        String   @id @default(cuid())
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id])
+  key       String
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, key])
+  @@index([key])
+}
+
+model AuditLog {
+  id        String      @id @default(cuid())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id])
+  action    AuditAction
+  entity    String
+  entityId  String?
+  oldValue  Json?
+  newValue  Json?
+  ip        String?
+  userAgent String?
+  createdAt DateTime    @default(now())
+
+  @@index([userId, createdAt])
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
+
+model ShiftChangeLog {
+  id        String   @id @default(cuid())
+  shiftId   String
+  shift     Shift    @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  field     String
+  oldValue  String?
+  newValue  String?
+  createdAt DateTime @default(now())
+
+  @@index([shiftId, createdAt])
+}
+
+model WorkerDocument {
+  id        String       @id @default(cuid())
+  workerId  String
+  worker    User         @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  type      DocumentType @default(OTHER)
+  url       String
+  key       String
+  fileName  String?
+  createdAt DateTime     @default(now())
+
+  @@index([workerId])
+}
+
+model BackupLog {
+  id        String   @id @default(cuid())
+  fileName  String
+  fileKey   String
+  fileSize  BigInt
+  status    String
+  error     String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
