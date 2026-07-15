@@ -38,12 +38,28 @@ class RegisterWorkerDto {
   @ApiPropertyOptional() @IsOptional() @IsObject() bankDetails?: Record<string, string>;
 }
 
+class UpdateWorkerMeDto {
+  @ApiPropertyOptional() @IsOptional() @IsString() @MinLength(2) fullName?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() phone?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() birthDate?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() city?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() specialty?: string;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) @Max(50) experience?: number;
+  @ApiPropertyOptional() @IsOptional() @IsObject() bankDetails?: Record<string, string>;
+  @ApiPropertyOptional() @IsOptional() @IsString() photoUrl?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() documentPhotoUrl?: string;
+}
+
 class UpdateRatingDto {
   @ApiProperty() @IsNumber() @Min(0) @Max(200) rating!: number;
 }
 
 class WorkerListDto {
   @ApiPropertyOptional() @IsOptional() @IsString() reason?: string;
+}
+
+class RejectWorkerDto {
+  @ApiProperty() @IsString() @MinLength(3) reason!: string;
 }
 
 @ApiTags('Workers')
@@ -72,7 +88,7 @@ export class WorkersController {
   @Patch('me')
   @Roles(UserRole.WORKER)
   @ApiOperation({ summary: 'Update my profile' })
-  updateMe(@CurrentUser() user: JwtPayload, @Body() dto: Partial<RegisterWorkerDto>) {
+  updateMe(@CurrentUser() user: JwtPayload, @Body() dto: UpdateWorkerMeDto) {
     return this.service.updateMe(user.sub, dto);
   }
 
@@ -95,6 +111,16 @@ export class WorkersController {
   @ApiOperation({ summary: 'My payments' })
   myPayments(@CurrentUser() user: JwtPayload) {
     return this.service.getMyPayments(user.sub);
+  }
+
+  @Get('verification/pending')
+  @Roles(UserRole.SUPERADMIN, UserRole.MANAGER)
+  @ApiOperation({ summary: 'Workers awaiting verification' })
+  listPending(
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+  ) {
+    return this.service.listPendingVerification(parseInt(page, 10), parseInt(limit, 10));
   }
 
   @Get()
@@ -127,6 +153,24 @@ export class WorkersController {
   @ApiOperation({ summary: 'Get worker' })
   findOne(@Param('id') id: string) {
     return this.service.findOne(id);
+  }
+
+  @Post(':id/verify')
+  @Roles(UserRole.SUPERADMIN, UserRole.MANAGER)
+  @ApiOperation({ summary: 'Approve worker account and document' })
+  verify(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    return this.service.verifyWorker(id, user.sub);
+  }
+
+  @Post(':id/reject')
+  @Roles(UserRole.SUPERADMIN, UserRole.MANAGER)
+  @ApiOperation({ summary: 'Reject worker document' })
+  reject(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: RejectWorkerDto,
+  ) {
+    return this.service.rejectWorker(id, user.sub, dto.reason);
   }
 
   @Patch(':id/rating')
@@ -168,11 +212,12 @@ export class WorkersController {
   }
 }
 
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TenancyModule } from '../tenancy/tenancy.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [TenancyModule],
+  imports: [TenancyModule, forwardRef(() => NotificationsModule)],
   controllers: [WorkersController],
   providers: [WorkersService],
   exports: [WorkersService],

@@ -105,8 +105,10 @@ export class ShiftsController {
     @Headers('x-company-id') headerCompanyId: string,
     @Param('id') id: string,
   ) {
-    const companyId =
-      user.role === UserRole.WORKER ? null : this.tenancy.resolveCompanyId(user, headerCompanyId);
+    if (user.role === UserRole.WORKER) {
+      return this.service.findOneForWorker(id, user.sub);
+    }
+    const companyId = this.tenancy.resolveCompanyId(user, headerCompanyId);
     return this.service.findOne(companyId, id);
   }
 
@@ -187,9 +189,10 @@ export class ShiftsController {
 import { Module, forwardRef } from '@nestjs/common';
 import { TenancyModule } from '../tenancy/tenancy.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { ApplicationsModule } from '../applications/applications.module';
 
 @Module({
-  imports: [TenancyModule, forwardRef(() => NotificationsModule)],
+  imports: [TenancyModule, forwardRef(() => NotificationsModule), ApplicationsModule],
   controllers: [ShiftsController],
   providers: [ShiftsService],
   exports: [ShiftsService],

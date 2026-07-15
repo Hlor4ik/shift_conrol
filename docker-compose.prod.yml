@@ -76,6 +76,7 @@ services:
       dockerfile: docker/Dockerfile.miniapp
       args:
         VITE_API_URL: /api/v1
+        VITE_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME}
     restart: always
     volumes:
       - miniapp_static:/usr/share/nginx/html

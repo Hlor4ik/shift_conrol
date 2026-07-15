@@ -84,7 +84,7 @@ export class AuthController {
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const token = req.cookies?.[REFRESH_COOKIE] as string | undefined;
     if (token) await this.authService.logout(token);
-    res.clearCookie(REFRESH_COOKIE);
+    this.clearRefreshCookie(res);
     return { success: true };
   }
 
@@ -97,12 +97,22 @@ export class AuthController {
   }
 
   private setRefreshCookie(res: Response, token: string, maxAgeSeconds: number) {
-    res.cookie(REFRESH_COOKIE, token, {
+    const cookieOptions = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict' as const,
+      maxAge: maxAgeSeconds * 1000,
+      path: '/',
+    };
+    res.cookie(REFRESH_COOKIE, token, cookieOptions);
+  }
+
+  private clearRefreshCookie(res: Response) {
+    res.clearCookie(REFRESH_COOKIE, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
-      maxAge: maxAgeSeconds * 1000,
-      path: '/api/v1/auth',
+      path: '/',
     });
   }
 }

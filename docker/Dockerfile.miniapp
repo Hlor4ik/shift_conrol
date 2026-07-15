@@ -4,7 +4,9 @@ WORKDIR /app
 
 FROM base AS builder
 ARG VITE_API_URL=/api/v1
+ARG VITE_BOT_USERNAME=shiftcontrol_ru_bot
 ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_BOT_USERNAME=$VITE_BOT_USERNAME
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
 COPY packages/shared/package.json ./packages/shared/
 COPY apps/miniapp/package.json ./apps/miniapp/

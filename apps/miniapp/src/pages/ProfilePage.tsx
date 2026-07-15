@@ -2,76 +2,122 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useToken, useAuth } from '../lib/auth';
+import { getTelegramUserName } from '../lib/telegram';
+import { PageHeader } from '../components/ui/PageHeader';
+import { AppFooter } from '../components/ui/Extras';
+import { Skeleton } from '../components/ui/Skeleton';
+import { QueryErrorBanner } from '../components/ui/QueryErrorBanner';
+import { IconChevronRight, IconStar, IconWallet, IconBell, IconLogout, IconUser } from '../components/icons';
 
 export default function ProfilePage() {
   const token = useToken();
   const { logout } = useAuth();
+  const tgName = getTelegramUserName();
 
-  const { data: user, isLoading } = useQuery({
+  const { data: user, isLoading, isError, refetch } = useQuery({
     queryKey: ['me'],
     queryFn: () =>
       api<{
         workerProfile: {
           fullName: string;
-          phone: string;
-          city: string;
           specialty: string;
-          experience: number;
           rating: number;
-        };
+        } | null;
       }>('/auth/me', { token: token! }),
-    enabled: !!token && token !== 'dev',
+    enabled: !!token,
   });
 
   const profile = user?.workerProfile;
+  const displayName = profile?.fullName ?? tgName ?? 'Пользователь';
+  const specialty = profile?.specialty ?? 'Разнорабочий';
+  const rating = profile?.rating ?? 100;
+  const stars = Math.min(5, Math.max(0, Math.round(rating / 20)));
 
-  if (isLoading) return <div className="h-40 bg-gray-100 rounded-2xl animate-pulse" />;
+  if (isLoading) return <Skeleton className="h-56" />;
+
+  if (isError) {
+    return (
+      <div className="page pt-2">
+        <PageHeader title="Профиль" />
+        <QueryErrorBanner onRetry={() => refetch()} />
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-bold">Профиль</h1>
+    <div className="page pt-2">
+      <PageHeader title="Профиль" />
 
-      {profile && (
-        <div className="bg-white rounded-2xl p-4 shadow-sm space-y-3">
-          <ProfileRow label="ФИО" value={profile.fullName} />
-          <ProfileRow label="Телефон" value={profile.phone} />
-          <ProfileRow label="Город" value={profile.city} />
-          <ProfileRow label="Специальность" value={profile.specialty} />
-          <ProfileRow label="Опыт" value={`${profile.experience} лет`} />
-          <ProfileRow label="Рейтинг" value={`${profile.rating} ⭐`} />
+      <div className="sc-card p-5">
+        <div className="flex items-center gap-4">
+          <div className="w-[68px] h-[68px] rounded-full bg-brand-600 text-white flex items-center justify-center text-[26px] font-bold">
+            {displayName.charAt(0).toUpperCase()}
+          </div>
+          <div>
+            <h2 className="text-[18px] font-bold text-slate-900">{displayName}</h2>
+            <p className="text-[13px] text-slate-500 mt-0.5">{specialty}</p>
+            <div className="flex items-center gap-0.5 mt-2">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <IconStar
+                  key={i}
+                  className={`w-4 h-4 ${i <= stars ? 'text-amber-400' : 'text-slate-200'}`}
+                />
+              ))}
+              <span className="text-[14px] font-semibold text-slate-700 ml-1.5">
+                {(rating / 20).toFixed(1)}
+              </span>
+              <span className="text-[12px] text-slate-400 ml-1">из 200</span>
+            </div>
+          </div>
         </div>
-      )}
+      </div>
 
       <div className="space-y-2">
-        <Link
-          to="/payments"
-          className="block bg-white rounded-xl p-4 shadow-sm font-medium"
-        >
-          История выплат →
-        </Link>
-        <Link
-          to="/notifications"
-          className="block bg-white rounded-xl p-4 shadow-sm font-medium"
-        >
-          Уведомления →
-        </Link>
+        <MenuLink to="/profile/settings" icon={<IconUser className="w-5 h-5" />} label="Настройки профиля" accent="blue" />
+        <MenuLink to="/payments" icon={<IconWallet className="w-5 h-5" />} label="История выплат" accent="green" />
+        <MenuLink to="/notifications" icon={<IconBell className="w-5 h-5" />} label="Уведомления" accent="amber" />
       </div>
 
       <button
-        onClick={logout}
-        className="w-full text-red-500 py-3 text-sm"
+        type="button"
+        onClick={() => void logout()}
+        className="w-full flex items-center justify-center gap-2 py-3 text-[15px] font-semibold text-red-500"
       >
-        Выйти
+        <IconLogout className="w-5 h-5" />
+        Выйти из аккаунта
       </button>
+
+      <AppFooter />
     </div>
   );
 }
 
-function ProfileRow({ label, value }: { label: string; value: string }) {
+function MenuLink({
+  to,
+  icon,
+  label,
+  accent,
+}: {
+  to: string;
+  icon: React.ReactNode;
+  label: string;
+  accent: 'green' | 'amber' | 'blue';
+}) {
+  const accents = {
+    green: 'bg-emerald-50 text-emerald-600',
+    amber: 'bg-amber-50 text-amber-600',
+    blue: 'bg-blue-50 text-brand-600',
+  };
+
   return (
-    <div className="flex justify-between text-sm">
-      <span className="text-tg-hint">{label}</span>
-      <span className="font-medium">{value}</span>
-    </div>
+    <Link to={to} className="sc-card flex items-center justify-between p-4 active:scale-[0.99] transition-transform">
+      <div className="flex items-center gap-3">
+        <span className={`w-10 h-10 rounded-full flex items-center justify-center ${accents[accent]}`}>
+          {icon}
+        </span>
+        <span className="font-semibold text-[15px] text-slate-900">{label}</span>
+      </div>
+      <IconChevronRight className="w-5 h-5 text-slate-400" />
+    </Link>
   );
 }

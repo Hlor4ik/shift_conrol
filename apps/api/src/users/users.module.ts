@@ -70,14 +70,24 @@ export class UsersController {
 
   @Patch(':id/block')
   @ApiOperation({ summary: 'Block user' })
-  block(@Param('id') id: string) {
-    return this.service.blockUser(id);
+  block(
+    @CurrentUser() user: JwtPayload,
+    @Headers('x-company-id') headerCompanyId: string,
+    @Param('id') id: string,
+  ) {
+    const companyId = this.tenancy.resolveCompanyId(user, headerCompanyId);
+    return this.service.blockUser(id, user, companyId);
   }
 
   @Patch(':id/unblock')
   @ApiOperation({ summary: 'Unblock user' })
-  unblock(@Param('id') id: string) {
-    return this.service.unblockUser(id);
+  unblock(
+    @CurrentUser() user: JwtPayload,
+    @Headers('x-company-id') headerCompanyId: string,
+    @Param('id') id: string,
+  ) {
+    const companyId = this.tenancy.resolveCompanyId(user, headerCompanyId);
+    return this.service.unblockUser(id, user, companyId);
   }
 }
 

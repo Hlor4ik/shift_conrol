@@ -49,19 +49,35 @@ export class PaymentsController {
   @Patch(':id')
   @Roles(UserRole.SUPERADMIN, UserRole.MANAGER)
   @ApiOperation({ summary: 'Update payment' })
-  update(@Param('id') id: string, @Body() dto: UpdatePaymentDto) {
-    return this.service.update(id, {
-      status: dto.status,
-      comment: dto.comment,
-      paidAt: dto.paidAt ? new Date(dto.paidAt) : undefined,
-    });
+  update(
+    @CurrentUser() user: JwtPayload,
+    @Headers('x-company-id') headerCompanyId: string,
+    @Param('id') id: string,
+    @Body() dto: UpdatePaymentDto,
+  ) {
+    const companyId = this.tenancy.resolveCompanyId(user, headerCompanyId);
+    return this.service.update(
+      id,
+      {
+        status: dto.status,
+        comment: dto.comment,
+        paidAt: dto.paidAt ? new Date(dto.paidAt) : undefined,
+      },
+      companyId,
+      user.sub,
+    );
   }
 
   @Post('bulk/:shiftId')
   @Roles(UserRole.SUPERADMIN, UserRole.MANAGER)
   @ApiOperation({ summary: 'Bulk create payments for shift' })
-  bulk(@Param('shiftId') shiftId: string) {
-    return this.service.bulkCreateForShift(shiftId);
+  bulk(
+    @CurrentUser() user: JwtPayload,
+    @Headers('x-company-id') headerCompanyId: string,
+    @Param('shiftId') shiftId: string,
+  ) {
+    const companyId = this.tenancy.resolveCompanyId(user, headerCompanyId);
+    return this.service.bulkCreateForShift(shiftId, companyId);
   }
 }
 

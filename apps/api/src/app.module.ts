@@ -45,11 +45,9 @@ import { AuditInterceptor } from './audit/audit.interceptor';
             : undefined,
       },
     }),
-    ThrottlerModule.forRoot([
-      { name: 'default', ttl: 60000, limit: 100 },
-      { name: 'auth', ttl: 60000, limit: 5 },
-      { name: 'upload', ttl: 60000, limit: 10 },
-    ]),
+    // Only "default" is global. Auth/upload limits are set per-route via @Throttle().
+    // Named throttlers here would apply to EVERY endpoint and block the admin UI after ~5 req/min.
+    ThrottlerModule.forRoot([{ name: 'default', ttl: 60000, limit: 300 }]),
     BullModule.forRoot({
       connection: {
         host: process.env.REDIS_HOST ?? 'localhost',

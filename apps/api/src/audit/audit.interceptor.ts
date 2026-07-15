@@ -18,6 +18,14 @@ const METHOD_ACTION: Record<string, AuditAction> = {
   DELETE: AuditAction.DELETE,
 };
 
+function parseEntityFromPath(path: string): string {
+  const segments = path.split('/').filter(Boolean);
+  let i = 0;
+  if (segments[i] === 'api') i++;
+  if (segments[i] === 'v1') i++;
+  return segments[i] ?? 'unknown';
+}
+
 @Injectable()
 export class AuditInterceptor implements NestInterceptor {
   constructor(
@@ -40,7 +48,7 @@ export class AuditInterceptor implements NestInterceptor {
     const adminRoles = ['SUPERADMIN', 'MANAGER'];
     if (!adminRoles.includes(request.user.role)) return next.handle();
 
-    const entity = request.path.split('/').filter(Boolean).slice(2)[0] ?? 'unknown';
+    const entity = parseEntityFromPath(request.path);
     const entityId = typeof request.params?.id === 'string' ? request.params.id : undefined;
 
     return next.handle().pipe(

@@ -4,16 +4,25 @@ import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth';
+import { QueryErrorBanner } from '@/components/QueryErrorBanner';
 
 export default function ForemanShiftsPage() {
   const { token } = useAuthStore();
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['foreman-shifts'],
     queryFn: () => api<Shift[]>('/foreman/shifts', { token: token! }),
     enabled: !!token,
   });
 
   if (isLoading) return <div className="animate-pulse h-40 bg-gray-100 rounded-xl" />;
+  if (isError) {
+    return (
+      <div className="space-y-4">
+        <h2 className="text-xl font-bold">Мои смены</h2>
+        <QueryErrorBanner onRetry={() => refetch()} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">

@@ -1,6 +1,15 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useToken } from '../lib/auth';
+import { formatDateTime } from '../lib/format';
+import { SubPageLayout } from '../components/layout/SubPageLayout';
+import { Button } from '../components/ui/Button';
+import { SectionTitle } from '../components/ui/SectionTitle';
+import { SkeletonList } from '../components/ui/Skeleton';
+import { QueryErrorBanner } from '../components/ui/QueryErrorBanner';
+import { EmptyState } from '../components/ui/EmptyState';
+import { IconBell, IconCalendar, IconWallet, IconShift } from '../components/icons';
 
 interface Notification {
   id: string;
@@ -9,52 +18,140 @@ interface Notification {
   isRead: boolean;
   createdAt: string;
   type: string;
+  data?: { shiftId?: string } | null;
 }
+
+const typeIcons: Record<string, React.ReactNode> = {
+  SHIFT: <IconCalendar className="w-5 h-5" />,
+  SHIFT_REMINDER: <IconCalendar className="w-5 h-5" />,
+  APPLICATION_CONFIRMED: <IconCalendar className="w-5 h-5" />,
+  PAYMENT: <IconWallet className="w-5 h-5" />,
+  PAYMENT_INFO: <IconWallet className="w-5 h-5" />,
+  SYSTEM: <IconBell className="w-5 h-5" />,
+};
+
+const PAGE_SIZE = 20;
 
 export default function NotificationsPage() {
   const token = useToken();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['notifications'],
-    queryFn: () =>
-      api<{ items: Notification[]; unread: number }>('/notifications', { token: token! }),
-    enabled: !!token && token !== 'dev',
-  });
+  const { data, isLoading, isError, fetchNextPage, hasNextPage, isFetchingNextPage, refetch } =
+    useInfiniteQuery({
+      queryKey: ['notifications'],
+      queryFn: ({ pageParam = 1 }) =>
+        api<{ items: Notification[]; unread: number; total: number; page: number; limit: number }>(
+          `/notifications?page=${pageParam}&limit=${PAGE_SIZE}`,
+          { token: token! },
+        ),
+      initialPageParam: 1,
+      getNextPageParam: (last) =>
+        last.page * last.limit < last.total ? last.page + 1 : undefined,
+      enabled: !!token,
+    });
 
-  const markAll = useMutation({
-    mutationFn: () =>
-      api('/notifications/read-all', { method: 'PATCH', token: token! }),
+  const markRead = useMutation({
+    mutationFn: (id: string) =>
+      api(`/notifications/${id}/read`, { method: 'PATCH', token: token! }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
   });
 
-  if (isLoading) return <div className="h-40 bg-gray-100 rounded-2xl animate-pulse" />;
+  const markAll = useMutation({
+    mutationFn: () => api('/notifications/read-all', { method: 'PATCH', token: token! }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+
+  const handleTap = async (n: Notification) => {
+    if (!n.isRead) {
+      await markRead.mutateAsync(n.id);
+    }
+    const shiftId = n.data?.shiftId;
+    if (shiftId) navigate(`/shifts/${shiftId}`);
+  };
+
+  if (isLoading) return <SkeletonList count={4} height="h-20" />;
+
+  if (isError) {
+    return (
+      <SubPageLayout title="Уведомления">
+        <QueryErrorBanner onRetry={() => refetch()} />
+      </SubPageLayout>
+    );
+  }
+
+  const items = data?.pages.flatMap((p) => p.items) ?? [];
+  const unread = data?.pages[0]?.unread ?? 0;
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Уведомления</h1>
-        {(data?.unread ?? 0) > 0 && (
-          <button onClick={() => markAll.mutate()} className="text-tg-link text-sm">
+    <SubPageLayout title="Уведомления">
+      <div className="flex items-center justify-between gap-3 -mt-1">
+        <p className="text-[13px] text-slate-500">
+          {unread ? `${unread} непрочитанных` : 'Все прочитаны'}
+        </p>
+        {unread > 0 && (
+          <Button variant="ghost" className="!py-2 !px-3 text-sm" onClick={() => markAll.mutate()}>
             Прочитать все
-          </button>
+          </Button>
         )}
       </div>
-      <div className="space-y-2">
-        {data?.items.map((n) => (
-          <div
-            key={n.id}
-            className={`bg-white rounded-2xl p-4 shadow-sm ${!n.isRead ? 'border-l-4 border-tg-button' : ''}`}
-          >
-            <p className="font-semibold">{n.title}</p>
-            <p className="text-sm text-gray-600 mt-1">{n.body}</p>
-            <p className="text-xs text-tg-hint mt-2">
-              {new Date(n.createdAt).toLocaleString('ru-RU')}
-            </p>
-          </div>
-        ))}
-        {!data?.items.length && <p className="text-center text-tg-hint py-8">Нет уведомлений</p>}
+
+      <div className="sc-card p-4 bg-blue-50 border-blue-100">
+        <p className="text-[13px] text-slate-600 leading-relaxed">
+          Напоминания о сменах, подтверждения записи и уведомления о выплатах
+        </p>
       </div>
-    </div>
+
+      <SectionTitle>Сообщения</SectionTitle>
+
+      <div className="space-y-2">
+        {items.map((n) => (
+          <button
+            key={n.id}
+            type="button"
+            onClick={() => void handleTap(n)}
+            className={`sc-card p-4 w-full text-left active:scale-[0.99] transition-transform ${!n.isRead ? 'border-l-4 border-l-brand-600' : ''}`}
+          >
+            <div className="flex gap-3">
+              <div className="w-10 h-10 rounded-full bg-blue-50 text-brand-600 flex items-center justify-center shrink-0">
+                {typeIcons[n.type] ?? <IconShift className="w-5 h-5" />}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start gap-2">
+                  {!n.isRead && <span className="w-2 h-2 rounded-full bg-brand-600 mt-2 shrink-0" />}
+                  <p className="font-semibold text-[15px] text-slate-900 flex-1">{n.title}</p>
+                </div>
+                <p className="text-[13px] text-slate-500 mt-1 leading-relaxed">{n.body}</p>
+                <p className="text-[12px] text-slate-400 mt-2">{formatDateTime(n.createdAt)}</p>
+              </div>
+            </div>
+          </button>
+        ))}
+
+        {!items.length && (
+          <div className="sc-card">
+            <EmptyState
+              icon={<IconBell className="w-7 h-7" />}
+              title="Уведомлений пока нет"
+              description="Когда вы запишетесь на смену или получите выплату — сообщение появится здесь"
+            />
+          </div>
+        )}
+
+        {hasNextPage && (
+          <Button
+            variant="secondary"
+            fullWidth
+            loading={isFetchingNextPage}
+            onClick={() => fetchNextPage()}
+          >
+            Загрузить ещё
+          </Button>
+        )}
+      </div>
+    </SubPageLayout>
   );
 }

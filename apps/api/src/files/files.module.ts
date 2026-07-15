@@ -9,7 +9,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
-import { UserRole } from '@shiftcontrol/database';
+import { UserRole, DocumentVerificationStatus, UserStatus } from '@shiftcontrol/database';
 import { FilesService } from './files.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { Roles } from '../common/decorators';
@@ -18,6 +18,7 @@ import type { JwtPayload } from '../common/current-user.decorator';
 import { TenancyService } from '../tenancy/tenancy.service';
 import { ObjectsService } from '../objects/objects.service';
 import { ShiftsService } from '../shifts/shifts.service';
+import { AdminAlertsService } from '../notifications/admin-alerts.service';
 
 @ApiTags('Files')
 @Controller('files')
@@ -29,6 +30,7 @@ export class FilesController {
     private tenancy: TenancyService,
     private objects: ObjectsService,
     private shifts: ShiftsService,
+    private adminAlerts: AdminAlertsService,
   ) {}
 
   @Post('upload')
@@ -51,13 +53,27 @@ export class FilesController {
   ) {
     const { url, key } = await this.files.upload(file, 'documents');
     await this.prisma.workerDocument.create({
-      data: { workerId: user.sub, url, key, fileName: file.originalname },
+      data: {
+        workerId: user.sub,
+        url,
+        key,
+        fileName: file.originalname,
+        status: DocumentVerificationStatus.PENDING,
+      },
     });
     await this.prisma.workerProfile.update({
       where: { userId: user.sub },
       data: { documentPhotoUrl: url },
     });
-    return { url, key };
+    const workerUser = await this.prisma.user.findUnique({ where: { id: user.sub } });
+    if (workerUser && workerUser.status !== UserStatus.ACTIVE) {
+      await this.prisma.user.update({
+        where: { id: user.sub },
+        data: { status: UserStatus.PENDING_VERIFICATION },
+      });
+    }
+    void this.adminAlerts.notifyDocumentUploaded(user.sub, file.originalname);
+    return { url, key, status: 'PENDING' };
   }
 
   @Post('objects/:id/photos')
@@ -95,13 +111,14 @@ export class FilesController {
   }
 }
 
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TenancyModule } from '../tenancy/tenancy.module';
 import { ObjectsModule } from '../objects/objects.module';
 import { ShiftsModule } from '../shifts/shifts.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [TenancyModule, ObjectsModule, ShiftsModule],
+  imports: [TenancyModule, ObjectsModule, ShiftsModule, forwardRef(() => NotificationsModule)],
   controllers: [FilesController],
   providers: [FilesService],
   exports: [FilesService],

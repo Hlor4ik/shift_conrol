@@ -2,14 +2,67 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: var(--tg-theme-bg-color, #f5f5f5);
-  color: var(--tg-theme-text-color, #1a1a1a);
-  -webkit-font-smoothing: antialiased;
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    margin: 0;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #f4f6fb;
+    color: #0f172a;
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior: none;
+  }
+
+  #root {
+    min-height: 100dvh;
+  }
 }
 
-.input {
-  @apply w-full px-4 py-3 rounded-xl border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-300;
+@layer components {
+  .page {
+    @apply animate-fade-in space-y-4 pb-2;
+  }
+
+  .sc-card {
+    @apply rounded-[20px] bg-white border border-slate-100 shadow-sc-card;
+  }
+
+  .input {
+    @apply w-full px-4 py-3 rounded-[14px] border border-slate-200 bg-white text-slate-900
+      placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/25 focus:border-brand-500/40
+      transition-shadow text-[15px];
+  }
+
+  .skeleton {
+    @apply rounded-[20px] bg-gradient-to-r from-slate-200/60 via-slate-100/80 to-slate-200/60 bg-[length:200%_100%] animate-shimmer;
+  }
+
+  .hero-banner {
+    background-image:
+      linear-gradient(180deg, rgba(29, 78, 216, 0.88) 0%, rgba(37, 99, 235, 0.82) 55%, rgba(59, 130, 246, 0.78) 100%),
+      url('https://images.unsplash.com/photo-1541888946425-d81bb19240f5?w=900&q=80');
+    background-size: cover;
+    background-position: center;
+  }
+
+  .shift-photo {
+    background-image: url('https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=240&q=80');
+    background-size: cover;
+    background-position: center;
+  }
+
+  .detail-hero {
+    background-image:
+      linear-gradient(180deg, rgba(29, 78, 216, 0.9) 0%, rgba(37, 99, 235, 0.85) 100%),
+      url('https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=900&q=80');
+    background-size: cover;
+    background-position: center;
+  }
+
+  .safe-bottom {
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+  }
 }

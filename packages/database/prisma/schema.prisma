@@ -71,6 +71,12 @@ enum DocumentType {
   OTHER
 }
 
+enum DocumentVerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum AuditAction {
   CREATE
   UPDATE
@@ -142,6 +148,12 @@ model User {
   shiftChangeLogs     ShiftChangeLog[]
   attendanceMarked    AttendanceRecord[]   @relation("MarkedByForeman")
   payments            Payment[]
+  paymentsConfirmed   Payment[]            @relation("PaymentConfirmedBy")
+  documentsReviewed   WorkerDocument[]     @relation("DocumentReviewedBy")
+  workersVerified     User[]               @relation("WorkerVerifiedBy")
+  verifiedBy          User?                @relation("WorkerVerifiedBy", fields: [verifiedById], references: [id])
+  verifiedById        String?
+  verifiedAt          DateTime?
 
   @@index([role, status])
   @@index([companyId])
@@ -375,6 +387,8 @@ model Payment {
   amount        Decimal          @db.Decimal(10, 2)
   status        PaymentStatus    @default(PENDING)
   paidAt        DateTime?
+  paidById      String?
+  paidBy        User?            @relation("PaymentConfirmedBy", fields: [paidById], references: [id])
   comment       String?
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
@@ -476,16 +490,22 @@ model ShiftChangeLog {
 }
 
 model WorkerDocument {
-  id        String       @id @default(cuid())
-  workerId  String
-  worker    User         @relation(fields: [workerId], references: [id], onDelete: Cascade)
-  type      DocumentType @default(OTHER)
-  url       String
-  key       String
-  fileName  String?
-  createdAt DateTime     @default(now())
+  id            String                     @id @default(cuid())
+  workerId      String
+  worker        User                       @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  type          DocumentType               @default(OTHER)
+  status        DocumentVerificationStatus @default(PENDING)
+  url           String
+  key           String
+  fileName      String?
+  rejectReason  String?
+  reviewedAt    DateTime?
+  reviewedById  String?
+  reviewedBy    User?                      @relation("DocumentReviewedBy", fields: [reviewedById], references: [id])
+  createdAt     DateTime                   @default(now())
 
   @@index([workerId])
+  @@index([workerId, status])
 }
 
 model BackupLog {

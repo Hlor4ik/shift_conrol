@@ -10,6 +10,22 @@ export class ExportService {
 
   async exportWorkers(companyId: string | null, format: string, res: Response) {
     const workers = await this.prisma.workerProfile.findMany({
+      where: companyId
+        ? {
+            OR: [
+              {
+                user: {
+                  applications: { some: { shift: { companyId } } },
+                },
+              },
+              {
+                user: {
+                  workerListEntries: { some: { companyId } },
+                },
+              },
+            ],
+          }
+        : undefined,
       include: {
         user: { select: { status: true, telegramUsername: true, createdAt: true } },
       },

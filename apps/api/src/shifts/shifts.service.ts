@@ -1,15 +1,17 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { ShiftStatus, Prisma } from '@shiftcontrol/database';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { ShiftStatus, Prisma, ApplicationStatus } from '@shiftcontrol/database';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
-import { computeShiftDuration } from '../common/utils';
+import { computeShiftDuration, startOfDayUTC } from '../common/utils';
 import { NotificationsService } from '../notifications/notifications.service';
+import { ApplicationsService } from '../applications/applications.service';
 
 @Injectable()
 export class ShiftsService {
   constructor(
     private prisma: PrismaService,
     private notifications: NotificationsService,
+    private applications: ApplicationsService,
   ) {}
 
   async findAll(
@@ -70,17 +72,27 @@ export class ShiftsService {
     const blacklistedCompanyIds = blacklisted.map((b) => b.companyId);
 
     const now = new Date();
+    const todayStart = startOfDayUTC(now);
+    const bookedDayRanges = await this.applications.getBookedDayRanges(workerId, todayStart);
+
     const where: Prisma.ShiftWhereInput = {
       status: ShiftStatus.PUBLISHED,
-      date: { gte: now },
+      date: { gte: todayStart },
       minRating: { lte: profile.rating },
       ...(blacklistedCompanyIds.length && { companyId: { notIn: blacklistedCompanyIds } }),
       ...(city && { object: { address: { contains: city, mode: 'insensitive' } } }),
-      applications: { none: { workerId } },
+      applications: {
+        none: { workerId, status: ApplicationStatus.CONFIRMED },
+      },
       OR: [
         { registrationDeadline: null },
         { registrationDeadline: { gt: now } },
       ],
+      ...(bookedDayRanges.length > 0 && {
+        NOT: {
+          OR: bookedDayRanges.map(({ gte, lte }) => ({ date: { gte, lte } })),
+        },
+      }),
     };
 
     const skip = (page - 1) * limit;
@@ -102,11 +114,64 @@ export class ShiftsService {
     return { items, total, page, limit };
   }
 
+  async findOneForWorker(shiftId: string, workerId: string) {
+    const shift = await this.prisma.shift.findUnique({
+      where: { id: shiftId },
+      include: {
+        object: true,
+        company: { select: { id: true, name: true } },
+        foreman: { include: { foremanProfile: true } },
+        photos: { orderBy: { sortOrder: 'asc' } },
+      },
+    });
+    if (!shift) throw new NotFoundException('Shift not found');
+    if (shift.status !== ShiftStatus.PUBLISHED) {
+      throw new NotFoundException('Shift not available');
+    }
+
+    const blacklisted = await this.prisma.workerListEntry.findFirst({
+      where: { companyId: shift.companyId, workerId, listType: 'BLACKLIST' },
+    });
+    if (blacklisted) throw new ForbiddenException('You are blacklisted for this company');
+
+    const workerContext = await this.applications.getWorkerShiftContext(workerId, shift);
+
+    return {
+      ...this.serializeShiftForWorker(shift),
+      workerContext: {
+        ...workerContext,
+        conflictShift: workerContext.conflictShift
+          ? {
+              id: workerContext.conflictShift.id,
+              title: workerContext.conflictShift.title,
+              date: workerContext.conflictShift.date.toISOString(),
+              startTime: workerContext.conflictShift.startTime,
+              address: workerContext.conflictShift.address,
+            }
+          : null,
+      },
+    };
+  }
+
+  private serializeShiftForWorker(shift: {
+    cost: { toString(): string };
+    date: Date;
+    [key: string]: unknown;
+  }) {
+    const { cost, date, ...rest } = shift;
+    return {
+      ...rest,
+      cost: cost.toString(),
+      date: date.toISOString(),
+    };
+  }
+
   async findOne(companyId: string | null, id: string) {
     const shift = await this.prisma.shift.findFirst({
       where: { id, ...(companyId && { companyId }) },
       include: {
         object: true,
+        company: { select: { id: true, name: true } },
         foreman: { include: { foremanProfile: true } },
         photos: { orderBy: { sortOrder: 'asc' } },
         applications: {

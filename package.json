@@ -6,12 +6,14 @@
     "dev": "turbo run dev",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
+    "test:e2e": "playwright test",
     "db:generate": "pnpm --filter @shiftcontrol/database generate",
     "db:migrate": "pnpm --filter @shiftcontrol/database migrate",
     "db:seed": "pnpm --filter @shiftcontrol/database seed",
     "db:studio": "pnpm --filter @shiftcontrol/database studio"
   },
   "devDependencies": {
+    "@playwright/test": "^1.49.1",
     "turbo": "^2.3.3",
     "typescript": "^5.7.2"
   },

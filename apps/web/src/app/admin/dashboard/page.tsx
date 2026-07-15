@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth';
+import { QueryErrorBanner } from '@/components/QueryErrorBanner';
 
 interface Dashboard {
   workersCount: number;
@@ -16,14 +17,39 @@ interface Dashboard {
 }
 
 export default function DashboardPage() {
-  const { token, companyId } = useAuthStore();
-  const { data, isLoading } = useQuery({
+  const { token, companyId, user } = useAuthStore();
+  const needsCompany = user?.role === 'SUPERADMIN' && !companyId;
+
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['dashboard', companyId],
     queryFn: () => api<Dashboard>('/reports/dashboard', { token: token!, companyId: companyId ?? undefined }),
-    enabled: !!token,
+    enabled: !!token && !needsCompany,
   });
 
+  if (needsCompany) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-bold">Дашборд</h1>
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Выберите компанию в шапке панели, чтобы загрузить статистику дашборда.
+        </div>
+      </div>
+    );
+  }
+
   if (isLoading) return <div className="animate-pulse h-64 bg-gray-100 rounded-xl" />;
+
+  if (isError) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-bold">Дашборд</h1>
+        <QueryErrorBanner
+          message={error instanceof Error ? error.message : undefined}
+          onRetry={() => refetch()}
+        />
+      </div>
+    );
+  }
 
   const stats = [
     { label: 'Работников', value: data?.workersCount ?? 0, color: 'bg-blue-500' },
@@ -36,6 +62,13 @@ export default function DashboardPage() {
   return (
     <div className="space-y-8">
       <h1 className="text-2xl font-bold">Дашборд</h1>
+
+      {user?.role === 'SUPERADMIN' && (
+        <p className="text-sm text-gray-500">
+          Статистика для выбранной компании
+          {companyId ? '' : ' — компания не выбрана'}
+        </p>
+      )}
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         {stats.map((s) => (

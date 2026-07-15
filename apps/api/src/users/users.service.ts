@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
+import type { JwtPayload } from '../common/current-user.decorator';
 import * as bcrypt from 'bcryptjs';
 import { UserRole, UserStatus, Prisma } from '@shiftcontrol/database';
 import { PrismaService } from '../prisma/prisma.service';
@@ -94,18 +95,52 @@ export class UsersService {
     });
   }
 
-  async blockUser(id: string) {
-    const user = await this.prisma.user.findUnique({ where: { id } });
+  private async assertUserInCompany(userId: string, companyId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
+
+    if (user.role === UserRole.WORKER) {
+      const linked =
+        (await this.prisma.workerListEntry.findFirst({
+          where: { workerId: userId, companyId },
+        })) ??
+        (await this.prisma.shiftApplication.findFirst({
+          where: { workerId: userId, shift: { companyId } },
+        }));
+      if (!linked) throw new ForbiddenException('Worker not in company scope');
+      return user;
+    }
+
+    if (user.companyId !== companyId) {
+      throw new ForbiddenException('User not in company scope');
+    }
+    return user;
+  }
+
+  async blockUser(id: string, actor: JwtPayload, companyId: string | null) {
+    if (actor.role !== UserRole.SUPERADMIN || companyId) {
+      const cid = companyId ?? actor.companyId;
+      if (!cid) throw new ForbiddenException('Company context required');
+      await this.assertUserInCompany(id, cid);
+    } else {
+      const user = await this.prisma.user.findUnique({ where: { id } });
+      if (!user) throw new NotFoundException('User not found');
+    }
     return this.prisma.user.update({
       where: { id },
       data: { status: UserStatus.BLOCKED },
     });
   }
 
-  async unblockUser(id: string) {
-    const user = await this.prisma.user.findUnique({ where: { id } });
-    if (!user) throw new NotFoundException('User not found');
+  async unblockUser(id: string, actor: JwtPayload, companyId: string | null) {
+    if (actor.role !== UserRole.SUPERADMIN || companyId) {
+      const cid = companyId ?? actor.companyId;
+      if (!cid) throw new ForbiddenException('Company context required');
+      await this.assertUserInCompany(id, cid);
+    } else {
+      const user = await this.prisma.user.findUnique({ where: { id } });
+      if (!user) throw new NotFoundException('User not found');
+    }
     return this.prisma.user.update({
       where: { id },
       data: { status: UserStatus.ACTIVE },

@@ -1,13 +1,15 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { PaymentStatus } from '@shiftcontrol/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { AdminAlertsService } from '../notifications/admin-alerts.service';
 
 @Injectable()
 export class PaymentsService {
   constructor(
     private prisma: PrismaService,
     private notifications: NotificationsService,
+    private adminAlerts: AdminAlertsService,
   ) {}
 
   async findAll(companyId: string | null, filters: {
@@ -34,12 +36,27 @@ export class PaymentsService {
         include: {
           worker: { include: { workerProfile: true } },
           shift: { select: { id: true, title: true, date: true, companyId: true } },
+          paidBy: {
+            select: {
+              id: true,
+              email: true,
+              managerProfile: { select: { fullName: true } },
+            },
+          },
         },
         orderBy: { createdAt: 'desc' },
       }),
       this.prisma.payment.count({ where }),
     ]);
-    return { items, total, page, limit };
+    return {
+      items: items.map((p) => ({
+        ...p,
+        amount: p.amount.toString(),
+      })),
+      total,
+      page,
+      limit,
+    };
   }
 
   async createForApplication(applicationId: string) {
@@ -52,7 +69,7 @@ export class PaymentsService {
     });
     if (!application) throw new NotFoundException('Application not found');
 
-    return this.prisma.payment.create({
+    const payment = await this.prisma.payment.create({
       data: {
         applicationId,
         workerId: application.workerId,
@@ -61,28 +78,75 @@ export class PaymentsService {
         status: PaymentStatus.PENDING,
       },
     });
+
+    void this.adminAlerts.notifyPaymentPending(payment.id);
+    return payment;
   }
 
-  async update(id: string, data: { status: PaymentStatus; comment?: string; paidAt?: Date }) {
-    const payment = await this.prisma.payment.findUnique({ where: { id } });
+  async update(
+    id: string,
+    data: { status: PaymentStatus; comment?: string; paidAt?: Date },
+    companyId?: string | null,
+    paidById?: string,
+  ) {
+    const payment = await this.prisma.payment.findUnique({
+      where: { id },
+      include: {
+        shift: { select: { companyId: true } },
+        paidBy: { include: { managerProfile: true } },
+      },
+    });
     if (!payment) throw new NotFoundException('Payment not found');
+    if (companyId && payment.shift.companyId !== companyId) {
+      throw new ForbiddenException('Payment not in your company');
+    }
 
+    const wasPaid = payment.status === PaymentStatus.PAID;
     const updated = await this.prisma.payment.update({
       where: { id },
       data: {
         status: data.status,
         comment: data.comment,
         paidAt: data.status === PaymentStatus.PAID ? (data.paidAt ?? new Date()) : data.paidAt,
+        paidById:
+          data.status === PaymentStatus.PAID && !wasPaid
+            ? (paidById ?? payment.paidById)
+            : data.status === PaymentStatus.PAID
+              ? payment.paidById
+              : null,
+      },
+      include: {
+        paidBy: { include: { managerProfile: true } },
+        worker: { include: { workerProfile: true } },
+        shift: true,
       },
     });
 
-    if (data.status === PaymentStatus.PAID) {
+    if (data.status === PaymentStatus.PAID && !wasPaid) {
       await this.notifications.notifyPayment(payment.workerId, id);
+
+      const confirmer = updated.paidBy
+        ? {
+            userId: updated.paidBy.id,
+            name:
+              updated.paidBy.managerProfile?.fullName ??
+              updated.paidBy.email ??
+              'Администратор',
+            via: 'admin' as const,
+          }
+        : undefined;
+      void this.adminAlerts.notifyPaymentConfirmed(id, confirmer);
     }
-    return updated;
+
+    return { ...updated, amount: updated.amount.toString() };
   }
 
-  async bulkCreateForShift(shiftId: string) {
+  async bulkCreateForShift(shiftId: string, companyId?: string | null) {
+    const shift = await this.prisma.shift.findUnique({ where: { id: shiftId } });
+    if (!shift) throw new NotFoundException('Shift not found');
+    if (companyId && shift.companyId !== companyId) {
+      throw new ForbiddenException('Shift not in your company');
+    }
     const applications = await this.prisma.shiftApplication.findMany({
       where: { shiftId, status: 'COMPLETED' },
       include: { shift: true },

@@ -135,6 +135,8 @@ else
   log ".env.production уже существует — не перезаписываем"
 fi
 
+ln -sf .env.production .env
+
 # --- Сборка и запуск ---
 log "Сборка Docker-образов (5–15 мин)..."
 docker compose -f docker-compose.prod.yml build

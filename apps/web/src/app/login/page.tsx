@@ -27,12 +27,30 @@ export default function LoginPage() {
         email: string;
         role: string;
         companyId?: string;
+        company?: { id: string; name: string };
         managerProfile?: { fullName: string };
         foremanProfile?: { fullName: string };
       }>('/auth/me', { token: accessToken });
       setAuth(accessToken, user);
+      if (user.role === 'WORKER') {
+        setError('Работники используют Telegram Mini App, не админ-панель');
+        useAuthStore.getState().logout();
+        return;
+      }
+      if (user.role === 'SUPERADMIN') {
+        try {
+          const companies = await api<{ items: { id: string }[] }>('/companies', {
+            token: accessToken,
+          });
+          if (companies.items[0]) {
+            useAuthStore.getState().setCompanyId(companies.items[0].id);
+          }
+        } catch {
+          // superadmin can pick company in header
+        }
+      }
       if (user.role === 'FOREMAN') router.push('/foreman/shifts');
-      else router.push('/admin/dashboard');
+      else if (user.role === 'MANAGER' || user.role === 'SUPERADMIN') router.push('/admin/dashboard');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка входа');
     } finally {

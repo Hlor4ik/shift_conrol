@@ -5,10 +5,12 @@ import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth';
+import { useToast } from '@/components/Toast';
 
 export default function NewShiftPage() {
   const router = useRouter();
   const { token, companyId } = useAuthStore();
+  const { showToast } = useToast();
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
     objectId: '',
@@ -65,7 +67,10 @@ export default function NewShiftPage() {
           foremanId: form.foremanId || undefined,
         }),
       });
+      showToast('Смена создана');
       router.push('/admin/shifts');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Ошибка создания', 'error');
     } finally {
       setLoading(false);
     }

@@ -6,13 +6,21 @@ import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { API_PREFIX } from '@shiftcontrol/shared';
+import { AllExceptionsFilter } from './common/all-exceptions.filter';
+
+// Prisma returns BigInt for telegramId etc. — JSON.stringify fails without this.
+(BigInt.prototype as unknown as { toJSON: () => string }).toJSON = function toJSON() {
+  return this.toString();
+};
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  app.getHttpAdapter().getInstance().set('trust proxy', 1);
   app.useLogger(app.get(Logger));
   app.use(helmet());
   app.use(cookieParser());
   app.setGlobalPrefix(API_PREFIX);
+  app.useGlobalFilters(new AllExceptionsFilter());
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

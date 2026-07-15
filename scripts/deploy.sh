@@ -20,6 +20,8 @@ if [[ ! -f .env.production ]]; then
   exit 1
 fi
 
+ln -sf .env.production .env
+
 log "ShiftControl Deploy"
 
 log "Получение обновлений из git..."
@@ -34,6 +36,10 @@ docker compose -f docker-compose.prod.yml run --rm api \
 
 log "Перезапуск сервисов..."
 docker compose -f docker-compose.prod.yml up -d
+
+log "Обновление статики Mini App..."
+docker run --rm -v shiftcontrol_miniapp_static:/target --entrypoint sh shiftcontrol-miniapp \
+  -c "rm -rf /target/* && cp -r /usr/share/nginx/html/. /target/"
 
 log "Ожидание (10 сек)..."
 sleep 10

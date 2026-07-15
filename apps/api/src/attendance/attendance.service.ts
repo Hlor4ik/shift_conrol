@@ -4,7 +4,7 @@ import {
   BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
-import { ShiftStatus, AttendanceStatus } from '@shiftcontrol/database';
+import { ShiftStatus, AttendanceStatus, ApplicationStatus } from '@shiftcontrol/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { RatingService } from '../rating/rating.service';
 import { PaymentsService } from '../payments/payments.service';
@@ -123,7 +123,7 @@ export class AttendanceService {
     const application = await this.prisma.shiftApplication.findUnique({
       where: { shiftId_workerId: { shiftId, workerId } },
     });
-    if (!application || application.status !== 'CONFIRMED') {
+    if (!application || application.status !== ApplicationStatus.CONFIRMED) {
       throw new BadRequestException('No confirmed application');
     }
 
@@ -159,7 +159,9 @@ export class AttendanceService {
     const application = await this.prisma.shiftApplication.findUnique({
       where: { shiftId_workerId: { shiftId, workerId } },
     });
-    if (!application) throw new BadRequestException('No application found');
+    if (!application || application.status !== ApplicationStatus.CONFIRMED) {
+      throw new BadRequestException('No confirmed application');
+    }
 
     return this.prisma.attendanceRecord.upsert({
       where: { applicationId: application.id },

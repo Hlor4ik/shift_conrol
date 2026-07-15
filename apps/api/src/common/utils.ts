@@ -69,3 +69,15 @@ export function computeShiftDuration(startTime: string, endTime: string): number
   const [eh, em] = endTime.split(':').map(Number);
   return eh * 60 + em - (sh * 60 + sm);
 }
+
+export function startOfDayUTC(d: Date): Date {
+  const x = new Date(d);
+  x.setUTCHours(0, 0, 0, 0);
+  return x;
+}
+
+export function endOfDayUTC(d: Date): Date {
+  const x = new Date(d);
+  x.setUTCHours(23, 59, 59, 999);
+  return x;
+}

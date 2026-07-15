@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@shiftcontrol/database';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -7,6 +8,19 @@ export class ReportsService {
 
   async getDashboard(companyId: string | null) {
     const companyFilter = companyId ? { companyId } : {};
+    let workerFilter: Prisma.WorkerProfileWhereInput = {};
+    if (companyId) {
+      workerFilter = {
+        user: {
+          applications: {
+            some: {
+              shift: { companyId },
+              status: { in: ['CONFIRMED', 'COMPLETED', 'NO_SHOW'] },
+            },
+          },
+        },
+      };
+    }
 
     const [
       workersCount,
@@ -18,7 +32,7 @@ export class ReportsService {
       foremenStats,
       completedShifts,
     ] = await Promise.all([
-      this.prisma.workerProfile.count(),
+      this.prisma.workerProfile.count({ where: workerFilter }),
       this.prisma.shift.count({
         where: { ...companyFilter, status: { in: ['PUBLISHED', 'IN_PROGRESS'] } },
       }),
@@ -29,7 +43,7 @@ export class ReportsService {
       this.prisma.shiftApplication.count({
         where: { status: 'NO_SHOW', shift: companyFilter },
       }),
-      this.prisma.workerProfile.aggregate({ _avg: { rating: true } }),
+      this.prisma.workerProfile.aggregate({ where: workerFilter, _avg: { rating: true } }),
       this.prisma.constructionObject.findMany({
         where: { ...companyFilter, isActive: true },
         include: {
